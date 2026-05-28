@@ -7,13 +7,14 @@ const port = process.env.PORT || 8080;
 const app = express();
 const server = http.createServer(app);
 
-// Socket.IO with CORS enabled and transports fallback for Railway
+// Socket.IO with CORS enabled and prioritized polling for Railway stability
 const io = socketIO(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
     },
-    transports: ['websocket', 'polling']
+    transports: ['polling', 'websocket'],
+    allowEIO3: true // Support older clients if necessary
 });
 
 app.use(cors());
@@ -24,13 +25,17 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', connections: io.engine.clientsCount });
 });
 
 const users = new Map();
 
 io.on('connection', (socket) => {
-    console.log('New client connected:', socket.id);
+    console.log('New client connected:', socket.id, 'Transport:', socket.conn.transport.name);
+
+    socket.conn.on('upgrade', () => {
+        console.log('Client upgraded transport:', socket.id, 'to', socket.conn.transport.name);
+    });
 
     socket.on('identify', (data) => {
         if (!data || !data.userId) return;
@@ -40,7 +45,7 @@ io.on('connection', (socket) => {
             user: data.user
         });
         socket.userId = data.userId;
-        console.log(`User identified: ${socket.userId}`);
+        console.log(`User identified: ${socket.userId} (${data.user.firstName})`);
         broadcastOnlineUsers();
     });
 
@@ -63,10 +68,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+        console.log('Client disconnected:', socket.id, 'Reason:', reason);
         if (socket.userId) {
             users.delete(socket.userId);
-            console.log(`User disconnected: ${socket.userId}`);
             broadcastOnlineUsers();
         }
     });
