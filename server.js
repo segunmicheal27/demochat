@@ -7,20 +7,20 @@ const port = process.env.PORT || 8080;
 const app = express();
 const server = http.createServer(app);
 
-// Socket.IO with CORS enabled for Flutter clients
+// Socket.IO with CORS enabled and transports fallback for Railway
 const io = socketIO(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
     },
-    transports: ['websocket', 'polling'] // Fallback to polling if WebSocket fails
+    transports: ['websocket', 'polling']
 });
 
 app.use(cors());
 
-// Health check endpoint
+// Health check endpoints
 app.get('/', (req, res) => {
-    res.send('SwissPay Chat Server is running');
+    res.send('SwissPay Socket.IO Server is running');
 });
 
 app.get('/health', (req, res) => {
@@ -33,19 +33,23 @@ io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
 
     socket.on('identify', (data) => {
+        if (!data || !data.userId) return;
+
         users.set(data.userId, {
-            socket: socket,
+            socketId: socket.id,
             user: data.user
         });
         socket.userId = data.userId;
-        console.log(`User identified: ${data.userId}`);
+        console.log(`User identified: ${socket.userId}`);
         broadcastOnlineUsers();
     });
 
     socket.on('message', (data) => {
+        if (!data || !data.receiverId) return;
+
         const receiver = users.get(data.receiverId);
         if (receiver) {
-            receiver.socket.emit('message', {
+            io.to(receiver.socketId).emit('message', {
                 type: 'message',
                 senderId: data.senderId,
                 senderUser: data.senderUser,
@@ -76,4 +80,3 @@ function broadcastOnlineUsers() {
 server.listen(port, '0.0.0.0', () => {
     console.log(`Server listening on port ${port}`);
 });
-
