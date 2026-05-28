@@ -1,79 +1,68 @@
-const WebSocket = require('ws');
+const express = require('express');
 const http = require('http');
+const socketIO = require('socket.io');
+const cors = require('cors');
 
 const port = process.env.PORT || 8080;
+const app = express();
+const server = http.createServer(app);
 
-const server = http.createServer((req, res) => {
-    // For Railway: Handle health checks but IGNORE upgrade requests here
-    if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
-        return;
-    }
-
-    if (req.url === '/' || req.url === '/health') {
-        res.writeHead(200);
-        res.end('SwissPay Chat Server is active.');
-    } else {
-        res.writeHead(404);
-        res.end('Not Found');
-    }
+// Socket.IO with CORS enabled for Flutter clients
+const io = socketIO(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    },
+    transports: ['websocket', 'polling'] // Fallback to polling if WebSocket fails
 });
 
-const wss = new WebSocket.Server({ noServer: true });
+app.use(cors());
 
-server.on('upgrade', (request, socket, head) => {
-    // Railway's edge can sometimes be tricky with pathnames
-    // We'll handle the upgrade for all paths to be safe
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-    });
+// Health check endpoint
+app.get('/', (req, res) => {
+    res.send('SwissPay Chat Server is running');
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
 });
 
 const users = new Map();
 
-wss.on('connection', (ws) => {
-    console.log('New client connected');
+io.on('connection', (socket) => {
+    console.log('New client connected:', socket.id);
 
-    ws.on('message', (message) => {
-        let data;
-        try {
-            data = JSON.parse(message);
-        } catch (e) {
-            console.error('Failed to parse:', message.toString());
-            return;
-        }
+    socket.on('identify', (data) => {
+        users.set(data.userId, {
+            socket: socket,
+            user: data.user
+        });
+        socket.userId = data.userId;
+        console.log(`User identified: ${data.userId}`);
+        broadcastOnlineUsers();
+    });
 
-        if (data.type === 'identify') {
-            users.set(data.userId, {
-                socket: ws,
-                user: data.user
+    socket.on('message', (data) => {
+        const receiver = users.get(data.receiverId);
+        if (receiver) {
+            receiver.socket.emit('message', {
+                type: 'message',
+                senderId: data.senderId,
+                senderUser: data.senderUser,
+                receiverId: data.receiverId,
+                text: data.text,
+                timestamp: data.timestamp,
+                messageType: data.messageType || 'text',
+                amount: data.amount,
+                note: data.note
             });
-            ws.userId = data.userId;
-            console.log(`User identified: ${ws.userId}`);
-            broadcastOnlineUsers();
-        }
-
-        if (data.type === 'message') {
-            const receiver = users.get(data.receiverId);
-            if (receiver && receiver.socket.readyState === WebSocket.OPEN) {
-                receiver.socket.send(JSON.stringify({
-                    type: 'message',
-                    senderId: data.senderId,
-                    senderUser: data.senderUser,
-                    receiverId: data.receiverId,
-                    text: data.text,
-                    timestamp: data.timestamp,
-                    messageType: data.messageType || 'text',
-                    amount: data.amount,
-                    note: data.note
-                }));
-            }
         }
     });
 
-    ws.on('close', () => {
-        if (ws.userId) {
-            users.delete(ws.userId);
-            console.log(`User disconnected: ${ws.userId}`);
+    socket.on('disconnect', () => {
+        if (socket.userId) {
+            users.delete(socket.userId);
+            console.log(`User disconnected: ${socket.userId}`);
             broadcastOnlineUsers();
         }
     });
@@ -81,15 +70,10 @@ wss.on('connection', (ws) => {
 
 function broadcastOnlineUsers() {
     const onlineIds = Array.from(users.keys());
-    const msg = JSON.stringify({ type: 'online_users', users: onlineIds });
-    wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(msg);
-        }
-    });
+    io.emit('online_users', { users: onlineIds });
 }
 
-// Bind to 0.0.0.0 as required by Railway
 server.listen(port, '0.0.0.0', () => {
     console.log(`Server listening on port ${port}`);
 });
+
