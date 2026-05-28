@@ -6,8 +6,6 @@ const cors = require('cors');
 const port = process.env.PORT || 8080;
 const app = express();
 
-app.use(cors());
-
 // Root path for health check
 app.get('/', (req, res) => {
     res.status(200).send('SwissPay Chat Server is UP and Running');
@@ -27,11 +25,13 @@ const io = new Server(server, {
     path: '/socket.io/',
     cors: {
         origin: "*",
-        methods: ["GET", "POST"],
+        methods: ["GET", "POST", "OPTIONS"],
+        allowedHeaders: ["*"],
         credentials: true
     },
-    transports: ['polling', 'websocket'],
+    transports: ['websocket', 'polling'], // Support both
     allowEIO3: true,
+    connectTimeout: 45000,
     pingTimeout: 60000,
     pingInterval: 25000
 });
@@ -55,10 +55,8 @@ io.on('connection', (socket) => {
         });
         socket.userId = data.userId;
 
-        console.log(`\x1b[36m[i] USER IDENTIFIED: ${user.firstName || 'Unknown'} ${user.lastName || ''} (ID: ${data.userId})\x1b[0m`);
-        console.log(`\x1b[33m[#] TOTAL ONLINE USERS: ${users.size}\x1b[0m`);
+        console.log(`\x1b[36m[i] USER IDENTIFIED: ${user.firstName || 'Unknown'} (ID: ${data.userId})\x1b[0m`);
 
-        // Broadcast current online users list
         const onlineIds = Array.from(users.keys());
         io.emit('online_users', { users: onlineIds });
     });
@@ -66,7 +64,7 @@ io.on('connection', (socket) => {
     socket.on('message', (data) => {
         if (!data || !data.receiverId) return;
 
-        console.log(`\x1b[90m[msg] ${data.senderId} -> ${data.receiverId}: ${data.text.substring(0, 20)}...\x1b[0m`);
+        console.log(`\x1b[90m[msg] ${data.senderId} -> ${data.receiverId}\x1b[0m`);
 
         const receiver = users.get(data.receiverId);
         if (receiver) {
@@ -78,7 +76,6 @@ io.on('connection', (socket) => {
         console.log(`\x1b[31m[-] DISCONNECTED: ${socket.id} (Reason: ${reason})\x1b[0m`);
         if (socket.userId) {
             users.delete(socket.userId);
-            console.log(`\x1b[33m[#] TOTAL ONLINE USERS: ${users.size}\x1b[0m`);
             const onlineIds = Array.from(users.keys());
             io.emit('online_users', { users: onlineIds });
         }
@@ -89,9 +86,9 @@ io.on('connection', (socket) => {
     });
 });
 
+// Railway needs to listen on all interfaces
 server.listen(port, '0.0.0.0', () => {
     console.log('------------------------------------------------');
     console.log(`  SwissPay Chat Server is UP on port ${port}`);
-    console.log(`  Endpoint: https://demochat-production.up.railway.app`);
     console.log('------------------------------------------------');
 });
