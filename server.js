@@ -7,7 +7,7 @@ const server = http.createServer((req, res) => {
     res.end('SwissPay Chat Server is running');
 });
 
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, path: '/ws' });
 
 const users = new Map();
 
@@ -71,3 +71,4 @@ function broadcastOnlineUsers() {
 server.listen(port, '0.0.0.0', () => {
     console.log(`Server listening on port ${port}`);
 });
+
