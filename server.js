@@ -3,11 +3,14 @@ const http = require('http');
 
 const port = process.env.PORT || 8080;
 const server = http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end('SwissPay Chat Server is running');
+    // Only respond to non-WebSocket requests
+    if (req.url !== '/ws') {
+        res.writeHead(200);
+        res.end('SwissPay Chat Server is running');
+    }
 });
 
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, path: '/ws' });
 
 const users = new Map();
 
@@ -29,6 +32,7 @@ wss.on('connection', (ws) => {
                 profileUrl: data.user.profileUrl
             });
             ws.userId = data.userId;
+            console.log(`User identified: ${ws.userId}`);
             broadcastOnlineUsers();
         }
 
@@ -53,6 +57,7 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         if (ws.userId) {
             users.delete(ws.userId);
+            console.log(`User disconnected: ${ws.userId}`);
             broadcastOnlineUsers();
         }
     });
