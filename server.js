@@ -14,7 +14,11 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'healthy', time: new Date().toISOString() });
+    res.status(200).json({
+        status: 'healthy',
+        activeUsers: users.size,
+        time: new Date().toISOString()
+    });
 });
 
 const server = http.createServer(app);
@@ -36,28 +40,33 @@ const users = new Map();
 
 io.on('connection', (socket) => {
     const transport = socket.conn.transport.name;
-    console.log(`[${new Date().toISOString()}] New Connection: ${socket.id} (Transport: ${transport})`);
+    console.log(`\x1b[32m[${new Date().toLocaleTimeString()}] [+] NEW CONNECTION: ${socket.id} (Via: ${transport})\x1b[0m`);
 
     socket.on('identify', (data) => {
         if (!data || !data.userId) {
-            console.log('Identify failed: No userId provided');
+            console.log(`\x1b[31m[!] Identify failed for ${socket.id}: No userId provided\x1b[0m`);
             return;
         }
 
+        const user = data.user || {};
         users.set(data.userId, {
             socketId: socket.id,
-            user: data.user
+            user: user
         });
         socket.userId = data.userId;
-        console.log(`User Identified: ${socket.userId} (${data.user?.firstName || 'Unknown'})`);
 
-        // Broadcast to all that someone joined
+        console.log(`\x1b[36m[i] USER IDENTIFIED: ${user.firstName || 'Unknown'} ${user.lastName || ''} (ID: ${data.userId})\x1b[0m`);
+        console.log(`\x1b[33m[#] TOTAL ONLINE USERS: ${users.size}\x1b[0m`);
+
+        // Broadcast current online users list
         const onlineIds = Array.from(users.keys());
         io.emit('online_users', { users: onlineIds });
     });
 
     socket.on('message', (data) => {
         if (!data || !data.receiverId) return;
+
+        console.log(`\x1b[90m[msg] ${data.senderId} -> ${data.receiverId}: ${data.text.substring(0, 20)}...\x1b[0m`);
 
         const receiver = users.get(data.receiverId);
         if (receiver) {
@@ -66,22 +75,23 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', (reason) => {
-        console.log(`[${new Date().toISOString()}] Disconnected: ${socket.id} (Reason: ${reason})`);
+        console.log(`\x1b[31m[-] DISCONNECTED: ${socket.id} (Reason: ${reason})\x1b[0m`);
         if (socket.userId) {
             users.delete(socket.userId);
+            console.log(`\x1b[33m[#] TOTAL ONLINE USERS: ${users.size}\x1b[0m`);
             const onlineIds = Array.from(users.keys());
             io.emit('online_users', { users: onlineIds });
         }
     });
 
-    // Log upgrade
     socket.conn.on('upgrade', () => {
-        console.log(`[${new Date().toISOString()}] Transport Upgraded: ${socket.id} to ${socket.conn.transport.name}`);
+        console.log(`\x1b[35m[^] UPGRADED: ${socket.id} to ${socket.conn.transport.name}\x1b[0m`);
     });
 });
 
 server.listen(port, '0.0.0.0', () => {
-    console.log('================================================');
+    console.log('------------------------------------------------');
     console.log(`  SwissPay Chat Server is UP on port ${port}`);
-    console.log('================================================');
+    console.log(`  Endpoint: https://demochat-production.up.railway.app`);
+    console.log('------------------------------------------------');
 });
