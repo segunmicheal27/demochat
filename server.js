@@ -1,13 +1,15 @@
 const WebSocket = require('ws');
+const http = require('http');
 
-// Use the PORT provided by the environment (Render/Railway) or 8080 locally
 const port = process.env.PORT || 8080;
-
-const wss = new WebSocket.Server({ port: port }, () => {
-    console.log(`SwissPay Chat Server started on port ${port}`);
+const server = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end('SwissPay Chat Server is running');
 });
 
-const users = new Map(); // userId -> { socket, name, profileUrl }
+const wss = new WebSocket.Server({ server });
+
+const users = new Map();
 
 wss.on('connection', (ws) => {
     console.log('New client connected');
@@ -17,20 +19,16 @@ wss.on('connection', (ws) => {
         try {
             data = JSON.parse(message);
         } catch (e) {
-            console.error('Failed to parse message:', message);
             return;
         }
-
-        console.log('Received:', data.type);
 
         if (data.type === 'identify') {
             users.set(data.userId, {
                 socket: ws,
-                name: data.name,
-                profileUrl: data.profileUrl
+                name: data.user.firstName + ' ' + data.user.lastName,
+                profileUrl: data.user.profileUrl
             });
             ws.userId = data.userId;
-            console.log(`User identified: ${data.name} (${data.userId})`);
             broadcastOnlineUsers();
         }
 
@@ -40,14 +38,14 @@ wss.on('connection', (ws) => {
                 receiver.socket.send(JSON.stringify({
                     type: 'message',
                     senderId: data.senderId,
+                    senderUser: data.senderUser,
                     receiverId: data.receiverId,
                     text: data.text,
                     timestamp: data.timestamp,
-                    messageType: data.messageType || 'text'
+                    messageType: data.messageType || 'text',
+                    amount: data.amount,
+                    note: data.note
                 }));
-                console.log(`Message relayed from ${data.senderId} to ${data.receiverId}`);
-            } else {
-                console.log(`User ${data.receiverId} is offline. Message saved to buffer (logic for push notifications could go here).`);
             }
         }
     });
@@ -55,26 +53,21 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         if (ws.userId) {
             users.delete(ws.userId);
-            console.log(`User disconnected: ${ws.userId}`);
             broadcastOnlineUsers();
         }
-    });
-
-    ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
     });
 });
 
 function broadcastOnlineUsers() {
     const onlineIds = Array.from(users.keys());
-    const msg = JSON.stringify({
-        type: 'online_users',
-        users: onlineIds
-    });
-
+    const msg = JSON.stringify({ type: 'online_users', users: onlineIds });
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(msg);
         }
     });
 }
+
+server.listen(port, '0.0.0.0', () => {
+    console.log(`Server listening on port ${port}`);
+});
