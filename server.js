@@ -1,48 +1,59 @@
 const express = require('express');
-const { createServer } = require('http');
+const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 
 const port = process.env.PORT || 8080;
 const app = express();
+
 app.use(cors());
 
-// Health check endpoints
+// Root path for health check
 app.get('/', (req, res) => {
-    res.send('SwissPay Socket.IO Server is running v2');
+    res.status(200).send('SwissPay Chat Server is UP and Running');
 });
 
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', connections: io.engine.clientsCount });
+    res.status(200).json({ status: 'healthy', time: new Date().toISOString() });
 });
 
-const httpServer = createServer(app);
+const server = http.createServer(app);
 
-// Initialize Socket.IO with modern constructor
-const io = new Server(httpServer, {
+const io = new Server(server, {
+    path: '/socket.io/',
     cors: {
         origin: "*",
-        methods: ["GET", "POST"]
+        methods: ["GET", "POST"],
+        credentials: true
     },
-    transports: ['polling', 'websocket'], // Prioritize polling for handshake stability
-    allowEIO3: true
+    transports: ['polling', 'websocket'],
+    allowEIO3: true,
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
 const users = new Map();
 
 io.on('connection', (socket) => {
-    console.log('New client connected:', socket.id, 'Transport:', socket.conn.transport.name);
+    const transport = socket.conn.transport.name;
+    console.log(`[${new Date().toISOString()}] New Connection: ${socket.id} (Transport: ${transport})`);
 
     socket.on('identify', (data) => {
-        if (!data || !data.userId) return;
+        if (!data || !data.userId) {
+            console.log('Identify failed: No userId provided');
+            return;
+        }
 
         users.set(data.userId, {
             socketId: socket.id,
             user: data.user
         });
         socket.userId = data.userId;
-        console.log(`User identified: ${socket.userId} (${data.user.firstName})`);
-        broadcastOnlineUsers();
+        console.log(`User Identified: ${socket.userId} (${data.user?.firstName || 'Unknown'})`);
+
+        // Broadcast to all that someone joined
+        const onlineIds = Array.from(users.keys());
+        io.emit('online_users', { users: onlineIds });
     });
 
     socket.on('message', (data) => {
@@ -55,19 +66,20 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', (reason) => {
-        console.log('Client disconnected:', socket.id, 'Reason:', reason);
+        console.log(`[${new Date().toISOString()}] Disconnected: ${socket.id} (Reason: ${reason})`);
         if (socket.userId) {
             users.delete(socket.userId);
-            broadcastOnlineUsers();
+            const onlineIds = Array.from(users.keys());
+            io.emit('online_users', { users: onlineIds });
         }
+    });
+
+    // Log upgrade
+    socket.conn.on('upgrade', () => {
+        console.log(`[${new Date().toISOString()}] Transport Upgraded: ${socket.id} to ${socket.conn.transport.name}`);
     });
 });
 
-function broadcastOnlineUsers() {
-    const onlineIds = Array.from(users.keys());
-    io.emit('online_users', { users: onlineIds });
-}
-
-httpServer.listen(port, '0.0.0.0', () => {
-    console.log(`Server listening on port ${port}`);
+server.listen(port, () => {
+    console.log(`>>>> SwissPay Chat Server listening on port ${port} <<<<`);
 });
