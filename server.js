@@ -2,17 +2,30 @@ const WebSocket = require('ws');
 const http = require('http');
 
 const port = process.env.PORT || 8080;
+
 const server = http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end('SwissPay Chat Server is running');
+    // For Railway: Handle health checks but IGNORE upgrade requests here
+    if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
+        return;
+    }
+
+    if (req.url === '/' || req.url === '/health') {
+        res.writeHead(200);
+        res.end('SwissPay Chat Server is active.');
+    } else {
+        res.writeHead(404);
+        res.end('Not Found');
+    }
 });
 
 const wss = new WebSocket.Server({ noServer: true });
 
 server.on('upgrade', (request, socket, head) => {
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
-  });
+    // Railway's edge can sometimes be tricky with pathnames
+    // We'll handle the upgrade for all paths to be safe
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
 });
 
 const users = new Map();
@@ -25,14 +38,14 @@ wss.on('connection', (ws) => {
         try {
             data = JSON.parse(message);
         } catch (e) {
+            console.error('Failed to parse:', message.toString());
             return;
         }
 
         if (data.type === 'identify') {
             users.set(data.userId, {
                 socket: ws,
-                name: data.user.firstName + ' ' + data.user.lastName,
-                profileUrl: data.user.profileUrl
+                user: data.user
             });
             ws.userId = data.userId;
             console.log(`User identified: ${ws.userId}`);
@@ -76,6 +89,7 @@ function broadcastOnlineUsers() {
     });
 }
 
+// Bind to 0.0.0.0 as required by Railway
 server.listen(port, '0.0.0.0', () => {
     console.log(`Server listening on port ${port}`);
 });
