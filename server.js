@@ -31,11 +31,11 @@ const io = new Server(server, {
         allowedHeaders: ["*"],
         credentials: true
     },
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'],
     allowEIO3: true,
     connectTimeout: 45000,
-    pingTimeout: 30000, // Reduced for faster disconnect detection
-    pingInterval: 10000 // Send pings more frequently
+    pingTimeout: 30000,
+    pingInterval: 10000
 });
 
 const users = new Map();
@@ -54,7 +54,7 @@ io.on('connection', (socket) => {
         });
         socket.userId = data.userId;
 
-        console.log(`\x1b[36m[i] USER IDENTIFIED: ${user.firstName || 'Unknown'} (ID: ${data.userId})\x1b[0m`);
+        console.log(`\x1b[36m[i] USER IDENTIFIED: ${user.firstName || 'Unknown'} ${user.lastName || ''} (ID: ${data.userId})\x1b[0m`);
 
         const onlineIds = Array.from(users.keys());
         io.emit('online_users', { users: onlineIds });
@@ -71,6 +71,17 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('read', (data) => {
+        if (!data || !data.senderId) return; // receiver is the one who read, sender is the one who sent the original message
+        const sender = users.get(data.senderId);
+        if (sender) {
+            io.to(sender.socketId).emit('read', {
+                receiverId: socket.userId,
+                conversationId: data.conversationId
+            });
+        }
+    });
+
     socket.on('message', (data) => {
         if (!data || !data.receiverId) return;
 
@@ -79,6 +90,12 @@ io.on('connection', (socket) => {
         const receiver = users.get(data.receiverId);
         if (receiver) {
             io.to(receiver.socketId).emit('message', data);
+            // Notify sender that it was delivered
+            socket.emit('status', {
+                messageId: data.id,
+                conversationId: data.conversationId,
+                status: 'delivered'
+            });
         }
     });
 
