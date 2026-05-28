@@ -3,14 +3,17 @@ const http = require('http');
 
 const port = process.env.PORT || 8080;
 const server = http.createServer((req, res) => {
-    // Only respond to non-WebSocket requests
-    if (req.url !== '/ws') {
-        res.writeHead(200);
-        res.end('SwissPay Chat Server is running');
-    }
+    res.writeHead(200);
+    res.end('SwissPay Chat Server is running');
 });
 
-const wss = new WebSocket.Server({ server, path: '/ws' });
+const wss = new WebSocket.Server({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
+});
 
 const users = new Map();
 
