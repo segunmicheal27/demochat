@@ -112,12 +112,8 @@ io.on('connection', (socket) => {
 });
 
 function broadcastOnlineUsers() {
-    const onlineData = Array.from(users.values()).map(u => ({
-        userId: u.userId,
-        firstName: u.user.firstName,
-        lastName: u.user.lastName,
-        profileUrl: u.user.profileUrl
-    }));
+    // Send the full user objects stored in our map
+    const onlineData = Array.from(users.values()).map(u => u.user);
     io.emit('online_users', { users: onlineData });
 }
 
