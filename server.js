@@ -80,6 +80,8 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(port, () => {
-    console.log(`>>>> SwissPay Chat Server listening on port ${port} <<<<`);
+server.listen(port, '0.0.0.0', () => {
+    console.log('================================================');
+    console.log(`  SwissPay Chat Server is UP on port ${port}`);
+    console.log('================================================');
 });
