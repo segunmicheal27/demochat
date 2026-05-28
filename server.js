@@ -50,14 +50,14 @@ io.on('connection', (socket) => {
         const user = data.user || {};
         users.set(data.userId, {
             socketId: socket.id,
+            userId: data.userId,
             user: user
         });
         socket.userId = data.userId;
 
         console.log(`\x1b[36m[i] USER IDENTIFIED: ${user.firstName || 'Unknown'} ${user.lastName || ''} (ID: ${data.userId})\x1b[0m`);
 
-        const onlineIds = Array.from(users.keys());
-        io.emit('online_users', { users: onlineIds });
+        broadcastOnlineUsers();
     });
 
     socket.on('typing', (data) => {
@@ -72,7 +72,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('read', (data) => {
-        if (!data || !data.senderId) return; // receiver is the one who read, sender is the one who sent the original message
+        if (!data || !data.senderId) return;
         const sender = users.get(data.senderId);
         if (sender) {
             io.to(sender.socketId).emit('read', {
@@ -90,7 +90,6 @@ io.on('connection', (socket) => {
         const receiver = users.get(data.receiverId);
         if (receiver) {
             io.to(receiver.socketId).emit('message', data);
-            // Notify sender that it was delivered
             socket.emit('status', {
                 messageId: data.id,
                 conversationId: data.conversationId,
@@ -103,8 +102,7 @@ io.on('connection', (socket) => {
         console.log(`\x1b[31m[-] DISCONNECTED: ${socket.id} (Reason: ${reason})\x1b[0m`);
         if (socket.userId) {
             users.delete(socket.userId);
-            const onlineIds = Array.from(users.keys());
-            io.emit('online_users', { users: onlineIds });
+            broadcastOnlineUsers();
         }
     });
 
@@ -112,6 +110,16 @@ io.on('connection', (socket) => {
         console.log(`\x1b[35m[^] UPGRADED: ${socket.id} to ${socket.conn.transport.name}\x1b[0m`);
     });
 });
+
+function broadcastOnlineUsers() {
+    const onlineData = Array.from(users.values()).map(u => ({
+        userId: u.userId,
+        firstName: u.user.firstName,
+        lastName: u.user.lastName,
+        profileUrl: u.user.profileUrl
+    }));
+    io.emit('online_users', { users: onlineData });
+}
 
 server.listen(port, '0.0.0.0', () => {
     console.log('------------------------------------------------');
