@@ -1,19 +1,16 @@
 {
   "name": "swisschat",
   "version": "1.0.0",
-  "description": "WebSocket server for SwissPay Chat",
+  "description": "WebSocket server for SwissPay Chat with Redis",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "dependencies": {
-    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "redis": "^4.6.12",
-    "socket.io": "^4.7.5",
-    "socket.io-client": "^4.8.3"
+    "socket.io": "^4.7.2",
+    "cors": "^2.8.5",
+    "redis": "^4.6.12"
   }
 }
+
