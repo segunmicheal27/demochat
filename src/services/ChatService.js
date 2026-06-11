@@ -130,6 +130,67 @@ class ChatService {
       console.error("FCM Send Error:", e);
     }
   }
+
+  // --- Channel Methods ---
+  async createChannel(data) {
+    const collection = getCollection();
+    const channelDoc = {
+      ...data,
+      type: 'channel',
+      createdAt: new Date().toISOString(),
+      followerCount: 0
+    };
+    await collection.upsert(`channel_${data.id}`, channelDoc);
+    return channelDoc;
+  }
+
+  async followChannel(channelId, userId) {
+    const collection = getCollection();
+    try {
+      // 1. Create follower link
+      await collection.upsert(`follower_${channelId}_${userId}`, {
+        type: 'channel_follower',
+        channelId,
+        userId,
+        followedAt: new Date().toISOString()
+      });
+
+      // 2. Increment follower count on channel
+      const result = await collection.get(`channel_${channelId}`);
+      const channel = result.content;
+      channel.followerCount = (channel.followerCount || 0) + 1;
+      await collection.replace(`channel_${channelId}`, channel);
+    } catch (e) {
+      console.error("Follow Channel Error:", e);
+    }
+  }
+
+  async getChannelFollowers(channelId) {
+    const cluster = getCluster();
+    const query = `
+      SELECT userId
+      FROM \`${cbBucket}\`
+      WHERE channelId = $1
+      AND type = 'channel_follower'
+    `;
+    try {
+      const results = await cluster.query(query, { parameters: [channelId] });
+      return results.rows.map(row => row.userId);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async saveChannelMessage(data) {
+    const collection = getCollection();
+    const messageDoc = {
+      ...data,
+      type: 'channel_message',
+      createdAt: new Date().toISOString()
+    };
+    await collection.upsert(data.id, messageDoc);
+    return messageDoc;
+  }
 }
 
 module.exports = new ChatService();
