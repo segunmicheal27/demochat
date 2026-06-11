@@ -126,6 +126,24 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('edit_message', async (data) => {
+    if (!data || !data.receiverId || !data.messageId) return;
+    const receiverData = await redis.hGet('online_users', data.receiverId);
+    if (receiverData) {
+      const receiver = JSON.parse(receiverData);
+      io.to(receiver.socketId).emit('edit_message', data);
+    }
+  });
+
+  socket.on('delete_message', async (data) => {
+    if (!data || !data.receiverId || !data.messageId) return;
+    const receiverData = await redis.hGet('online_users', data.receiverId);
+    if (receiverData) {
+      const receiver = JSON.parse(receiverData);
+      io.to(receiver.socketId).emit('delete_message', data);
+    }
+  });
+
   socket.on('disconnect', async (reason) => {
     console.log(`\x1b[31m[-] DISCONNECTED: ${socket.id} (Reason: ${reason})\x1b[0m`);
     if (socket.userId) {
