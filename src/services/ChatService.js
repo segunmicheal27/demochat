@@ -192,24 +192,8 @@ class ChatService {
       throw new Error("Only the channel owner can post messages.");
     }
 
-    // 2. Handle Cloudinary Upload if it's a local file path (base64 or buffer usually handled by client,
-    // but here we ensure the URL stored is the Cloudinary one)
-    let finalUrl = data.text;
-    if (['image', 'video', 'document'].includes(data.messageType) && !data.text.startsWith('http')) {
-       try {
-         const uploadRes = await cloudinary.uploader.upload(data.text, {
-           resource_type: "auto",
-           folder: "swisspay/channels"
-         });
-         finalUrl = uploadRes.secure_url;
-       } catch (e) {
-         console.error("Cloudinary Upload Error:", e);
-       }
-    }
-
     const messageDoc = {
       ...data,
-      text: finalUrl,
       type: 'channel_message',
       createdAt: new Date().toISOString(),
       views: 0
