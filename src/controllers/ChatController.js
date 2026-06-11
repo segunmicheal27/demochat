@@ -14,6 +14,8 @@ class ChatController {
     socket.on('typing', (data) => this.typing(socket, data));
     socket.on('recording', (data) => this.recording(socket, data));
     socket.on('create_channel', (data) => this.createChannel(socket, data));
+    socket.on('get_channels', (data) => this.getChannels(socket, data));
+    socket.on('get_my_channels', (data) => this.getMyChannels(socket, data));
     socket.on('follow_channel', (data) => this.followChannel(socket, data));
     socket.on('channel_message', (data) => this.channelMessage(socket, data));
     socket.on('channel_view', (data) => this.channelView(socket, data));
@@ -107,6 +109,17 @@ class ChatController {
     } catch (e) {
       socket.emit('error', { message: "Failed to create channel" });
     }
+  }
+
+  async getChannels(socket, data) {
+    const channels = await ChatService.getAllChannels();
+    socket.emit('channels_list', channels);
+  }
+
+  async getMyChannels(socket, data) {
+    if (!socket.userId) return;
+    const channels = await ChatService.getMyFollowedChannels(socket.userId);
+    socket.emit('my_channels_list', channels);
   }
 
   async channelMessage(socket, data) {

@@ -182,6 +182,42 @@ class ChatService {
     }
   }
 
+  async getAllChannels() {
+    const cluster = getCluster();
+    const query = `
+      SELECT meta().id, *
+      FROM \`${cbBucket}\`
+      WHERE type = 'channel'
+      ORDER BY createdAt DESC
+      LIMIT 100
+    `;
+    try {
+      const results = await cluster.query(query);
+      return results.rows.map(row => ({ id: row.id, ...row[cbBucket] }));
+    } catch (e) {
+      console.error("GetAllChannels Error:", e);
+      return [];
+    }
+  }
+
+  async getMyFollowedChannels(userId) {
+    const cluster = getCluster();
+    const query = `
+      SELECT c.*
+      FROM \`${cbBucket}\` AS f
+      JOIN \`${cbBucket}\` AS c ON KEYS "channel_" || f.channelId
+      WHERE f.type = 'channel_follower'
+      AND f.userId = $1
+    `;
+    try {
+      const results = await cluster.query(query, { parameters: [userId] });
+      return results.rows;
+    } catch (e) {
+      console.error("GetMyFollowedChannels Error:", e);
+      return [];
+    }
+  }
+
   async saveChannelMessage(data) {
     const collection = getCollection();
 
