@@ -13,15 +13,14 @@ const redisPort = process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) 
 const redisUsername = process.env.REDIS_USERNAME || undefined;
 const redisPassword = process.env.REDIS_PASSWORD || undefined;
 
-const cbConnStr = process.env.COUCHBASE_URL || "couchbases://cb.yz6j1i2wajboagpx.cloud.couchbase.com";
-const cbUser = process.env.COUCHBASE_USER || "swiss-lite-chat";
-const cbPass = process.env.COUCHBASE_PASS || "HN@1~u2MzP9O";
-const cbBucket = process.env.COUCHBASE_BUCKET || "swisschat";
+const cbConnStr = process.env.COUCHBASE_URL || "";
+const cbUser = process.env.COUCHBASE_USER || "";
+const cbPass = process.env.COUCHBASE_PASS || "";
+const cbBucket = process.env.COUCHBASE_BUCKET || "";
 
 const app = express();
 
 // Global handles
-let redis;
 let cluster;
 let bucket;
 let collection;
