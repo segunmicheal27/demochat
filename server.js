@@ -98,6 +98,18 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('recording', async (data) => {
+    if (!data || !data.receiverId) return;
+    const receiverData = await redis.hGet('online_users', data.receiverId);
+    if (receiverData) {
+      const receiver = JSON.parse(receiverData);
+      io.to(receiver.socketId).emit('recording', {
+        senderId: socket.userId,
+        isRecording: data.isRecording
+      });
+    }
+  });
+
   socket.on('read', async (data) => {
     if (!data || !data.senderId) return;
     const senderData = await redis.hGet('online_users', data.senderId);
