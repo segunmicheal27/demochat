@@ -1,5 +1,6 @@
 const { getCollection, getCluster, cbBucket } = require('../config/database');
 const { admin } = require('../config/firebase');
+const cloudinary = require('../config/cloudinary');
 
 class ChatService {
   async saveMessage(data) {
@@ -183,13 +184,48 @@ class ChatService {
 
   async saveChannelMessage(data) {
     const collection = getCollection();
+
+    // 1. Verify ownership logic on server side
+    const channelResult = await collection.get(`channel_${data.channelId}`);
+    const channel = channelResult.content;
+    if (channel.ownerId !== data.senderId) {
+      throw new Error("Only the channel owner can post messages.");
+    }
+
+    // 2. Handle Cloudinary Upload if it's a local file path (base64 or buffer usually handled by client,
+    // but here we ensure the URL stored is the Cloudinary one)
+    let finalUrl = data.text;
+    if (['image', 'video', 'document'].includes(data.messageType) && !data.text.startsWith('http')) {
+       try {
+         const uploadRes = await cloudinary.uploader.upload(data.text, {
+           resource_type: "auto",
+           folder: "swisspay/channels"
+         });
+         finalUrl = uploadRes.secure_url;
+       } catch (e) {
+         console.error("Cloudinary Upload Error:", e);
+       }
+    }
+
     const messageDoc = {
       ...data,
+      text: finalUrl,
       type: 'channel_message',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      views: 0
     };
     await collection.upsert(data.id, messageDoc);
     return messageDoc;
+  }
+
+  async incrementChannelViews(messageId) {
+    const collection = getCollection();
+    try {
+      const result = await collection.get(messageId);
+      const doc = result.content;
+      doc.views = (doc.views || 0) + 1;
+      await collection.replace(messageId, doc);
+    } catch (e) {}
   }
 }
 

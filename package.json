@@ -7,13 +7,13 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2",
+    "cloudinary": "^2.10.0",
     "cors": "^2.8.5",
-    "redis": "^4.6.12",
     "couchbase": "^4.2.3",
     "dotenv": "^16.3.1",
-    "firebase-admin": "^12.0.0"
+    "express": "^4.18.2",
+    "firebase-admin": "^12.0.0",
+    "redis": "^4.6.12",
+    "socket.io": "^4.7.2"
   }
 }
-

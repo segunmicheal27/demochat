@@ -16,6 +16,7 @@ class ChatController {
     socket.on('create_channel', (data) => this.createChannel(socket, data));
     socket.on('follow_channel', (data) => this.followChannel(socket, data));
     socket.on('channel_message', (data) => this.channelMessage(socket, data));
+    socket.on('channel_view', (data) => this.channelView(socket, data));
     socket.on('block_user', (data) => this.blockUser(socket, data));
     socket.on('read', (data) => this.read(socket, data));
     socket.on('message', (data) => this.message(socket, data));
@@ -111,43 +112,53 @@ class ChatController {
   async channelMessage(socket, data) {
     if (!data || !data.channelId) return;
 
-    // 1. Save to Couchbase
-    await ChatService.saveChannelMessage(data);
+    try {
+      // 1. Save to Couchbase + Cloudinary (Ownership check happens inside)
+      const messageDoc = await ChatService.saveChannelMessage(data);
 
-    // Ack to sender
-    socket.emit('status', {
-      messageId: data.id,
-      channelId: data.channelId,
-      status: 'sent'
-    });
+      // Ack to sender with final URL
+      socket.emit('status', {
+        messageId: data.id,
+        channelId: data.channelId,
+        status: 'sent',
+        text: messageDoc.text
+      });
 
-    // 2. Get all followers
-    const followers = await ChatService.getChannelFollowers(data.channelId);
-    console.log(`[Channel] Sending msg to ${followers.length} followers of ${data.channelId}`);
+      // 2. Get all followers
+      const followers = await ChatService.getChannelFollowers(data.channelId);
+      console.log(`[Channel] Sending msg to ${followers.length} followers of ${data.channelId}`);
 
-    // 3. Emit to all online followers
-    const redis = getRedis();
-    for (const followerId of followers) {
-      if (followerId === socket.userId) continue; // Skip sender
+      // 3. Emit to all online followers
+      const redis = getRedis();
+      for (const followerId of followers) {
+        if (followerId === socket.userId) continue;
 
-      const followerData = await redis.hGet('online_users', followerId);
-      if (followerData) {
-        const follower = JSON.parse(followerData);
-        this.io.to(follower.socketId).emit('message', {
-          ...data,
-          isChannelMessage: true
-        });
-      } else {
-        // Optional: Send Push notification to offline followers
-        const token = await ChatService.getFcmToken(followerId);
-        if (token) {
-          await ChatService.sendPushNotification(token, {
-            ...data,
-            senderUser: { firstName: "Channel", lastName: data.channelName || "SwissPay" }
+        const followerData = await redis.hGet('online_users', followerId);
+        if (followerData) {
+          const follower = JSON.parse(followerData);
+          this.io.to(follower.socketId).emit('message', {
+            ...messageDoc,
+            isChannelMessage: true
           });
+        } else {
+          const token = await ChatService.getFcmToken(followerId);
+          if (token) {
+            await ChatService.sendPushNotification(token, {
+              ...messageDoc,
+              senderUser: { firstName: data.channelName || "Channel", lastName: "" }
+            });
+          }
         }
       }
+    } catch (e) {
+      console.error("Channel Message Error:", e.message);
+      socket.emit('error', { message: e.message });
     }
+  }
+
+  async channelView(socket, data) {
+    if (!data || !data.messageId) return;
+    await ChatService.incrementChannelViews(data.messageId);
   }
 
   async blockUser(socket, data) {
