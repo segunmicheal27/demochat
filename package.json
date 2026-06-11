@@ -12,7 +12,8 @@
     "cors": "^2.8.5",
     "redis": "^4.6.12",
     "couchbase": "^4.2.3",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "firebase-admin": "^12.0.0"
   }
 }
 
