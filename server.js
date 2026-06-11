@@ -110,6 +110,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('follow_channel', async (data) => {
+    if (!data || !data.ownerId || !data.channelId) return;
+    const ownerData = await redis.hGet('online_users', data.ownerId);
+    if (ownerData) {
+      const owner = JSON.parse(ownerData);
+      io.to(owner.socketId).emit('channel_notification', {
+        type: 'follower',
+        channelId: data.channelId,
+        follower: data.follower, // Full user object of the follower
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   socket.on('read', async (data) => {
     if (!data || !data.senderId) return;
     const senderData = await redis.hGet('online_users', data.senderId);
