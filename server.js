@@ -166,7 +166,10 @@ io.on('connection', (socket) => {
     const receiverData = await redis.hGet('online_users', data.receiverId);
     if (receiverData) {
       const receiver = JSON.parse(receiverData);
-      io.to(receiver.socketId).emit('delete_message', data);
+      io.to(receiver.socketId).emit('delete_message', {
+        ...data,
+        senderId: socket.userId
+      });
     }
   });
 
