@@ -114,6 +114,13 @@ class ChatController {
     // 1. Save to Couchbase
     await ChatService.saveChannelMessage(data);
 
+    // Ack to sender
+    socket.emit('status', {
+      messageId: data.id,
+      channelId: data.channelId,
+      status: 'sent'
+    });
+
     // 2. Get all followers
     const followers = await ChatService.getChannelFollowers(data.channelId);
     console.log(`[Channel] Sending msg to ${followers.length} followers of ${data.channelId}`);

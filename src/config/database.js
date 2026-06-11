@@ -49,6 +49,13 @@ async function connectCouchbase() {
   bucket = cluster.bucket(cbBucket);
   collection = bucket.defaultCollection();
   console.log(`SUCCESS: Connected to Couchbase bucket: ${cbBucket}`);
+
+  // Create Primary Index if not exists (for development/demo)
+  try {
+    await cluster.query(`CREATE PRIMARY INDEX ON \`${cbBucket}\``);
+    console.log("Primary Index verified/created.");
+  } catch (e) {}
+
   return { cluster, bucket, collection };
 }
 
