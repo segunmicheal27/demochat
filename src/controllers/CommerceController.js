@@ -9,6 +9,7 @@ class CommerceController extends BaseController {
   handleEvents(socket) {
     socket.on('create_ad', (data) => this.createAd(socket, data));
     socket.on('get_ads', (data) => this.getAds(socket, data));
+    socket.on('get_featured_ads', (data) => this.getFeaturedAds(socket, data));
     socket.on('get_my_ads', (data) => this.getMyAds(socket, data));
     socket.on('get_ad_categories', (data) => this.getAdCategories(socket, data));
     socket.on('update_ad_status', (data) => this.updateAdStatus(socket, data));
@@ -29,6 +30,11 @@ class CommerceController extends BaseController {
   async getAds(socket, data) {
     const ads = await CommerceService.getAllAds();
     socket.emit('ads_list', ads);
+  }
+
+  async getFeaturedAds(socket, data) {
+    const ads = await CommerceService.getFeaturedAds();
+    socket.emit('featured_ads_list', ads);
   }
 
   async getMyAds(socket, data) {

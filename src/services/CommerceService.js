@@ -32,6 +32,25 @@ class CommerceService {
     }
   }
 
+  async getFeaturedAds() {
+    const cluster = getCluster();
+    const query = `
+      SELECT meta().id, *
+      FROM \`${cbBucket}\`
+      WHERE type = 'ad'
+      AND status = 'active'
+      AND isFeatured = true
+      ORDER BY createdAt DESC
+      LIMIT 10
+    `;
+    try {
+      const results = await cluster.query(query);
+      return results.rows.map(row => ({ id: row.id, ...row[cbBucket] }));
+    } catch (e) {
+      return [];
+    }
+  }
+
   async getMyAds(userId) {
     const cluster = getCluster();
     const query = `
@@ -73,18 +92,17 @@ class CommerceService {
   }
 
   async getCategories() {
-    // Return high-quality categories for Jiji-style marketplace
     return [
-      { id: "vehicles", name: "Vehicles", icon: "directions_car", color: "blue" },
-      { id: "property", name: "Property", icon: "home_work", color: "orange" },
-      { id: "phones", name: "Phones", icon: "smartphone", color: "green" },
-      { id: "electronics", name: "Electronics", icon: "laptop_mac", color: "purple" },
-      { id: "fashion", name: "Fashion", icon: "checkroom", color: "pink" },
-      { id: "home", name: "Home & Garden", icon: "chair", color: "brown" },
-      { id: "services", name: "Services", icon: "build", color: "red" },
-      { id: "jobs", name: "Jobs", icon: "work", color: "cyan" },
-      { id: "babies", name: "Babies & Kids", icon: "child_care", color: "yellow" },
-      { id: "animals", name: "Animals & Pets", icon: "pets", color: "teal" }
+      { id: "vehicles", name: "Vehicles", icon: "directions_car", color: "blue", image: "https://jiji.ng/assets/static/main/index/categories/vehicles.png" },
+      { id: "property", name: "Property", icon: "home_work", color: "orange", image: "https://jiji.ng/assets/static/main/index/categories/real-estate.png" },
+      { id: "phones", name: "Phones & Tablets", icon: "smartphone", color: "green", image: "https://jiji.ng/assets/static/main/index/categories/mobile.png" },
+      { id: "electronics", name: "Electronics", icon: "laptop_mac", color: "purple", image: "https://jiji.ng/assets/static/main/index/categories/electronics.png" },
+      { id: "home", name: "Home, Furniture & Appliances", icon: "chair", color: "brown", image: "https://jiji.ng/assets/static/main/index/categories/home-garden.png" },
+      { id: "fashion", name: "Health & Beauty", icon: "face", color: "pink", image: "https://jiji.ng/assets/static/main/index/categories/beauty.png" },
+      { id: "fashion_wear", name: "Fashion", icon: "checkroom", color: "red", image: "https://jiji.ng/assets/static/main/index/categories/fashion.png" },
+      { id: "hobbies", name: "Hobbies, Art & Sport", icon: "sports_basketball", color: "teal", image: "https://jiji.ng/assets/static/main/index/categories/hobbies.png" },
+      { id: "jobs", name: "Seeking Work - CVs", icon: "work", color: "cyan", image: "https://jiji.ng/assets/static/main/index/categories/jobs.png" },
+      { id: "services", name: "Services", icon: "build", color: "grey", image: "https://jiji.ng/assets/static/main/index/categories/services.png" }
     ];
   }
 }
