@@ -245,7 +245,25 @@ class ChatService {
       const doc = result.content;
       doc.views = (doc.views || 0) + 1;
       await collection.replace(messageId, doc);
-    } catch (e) {}
+      return doc.views;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  async saveReaction(messageId, userId, reaction) {
+    const collection = getCollection();
+    try {
+      const result = await collection.get(messageId);
+      const doc = result.content;
+      if (!doc.reactions) doc.reactions = {};
+      doc.reactions[userId] = reaction;
+      await collection.replace(messageId, doc);
+      return doc.reactions;
+    } catch (e) {
+      console.error("Save Reaction Error:", e);
+      return null;
+    }
   }
 }
 

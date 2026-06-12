@@ -19,6 +19,7 @@ class ChatController {
     socket.on('follow_channel', (data) => this.followChannel(socket, data));
     socket.on('channel_message', (data) => this.channelMessage(socket, data));
     socket.on('channel_view', (data) => this.channelView(socket, data));
+    socket.on('message_reaction', (data) => this.messageReaction(socket, data));
     socket.on('block_user', (data) => this.blockUser(socket, data));
     socket.on('read', (data) => this.read(socket, data));
     socket.on('message', (data) => this.message(socket, data));
@@ -170,8 +171,58 @@ class ChatController {
   }
 
   async channelView(socket, data) {
-    if (!data || !data.messageId) return;
-    await ChatService.incrementChannelViews(data.messageId);
+    if (!data || !data.messageId || !data.channelId) return;
+    const views = await ChatService.incrementChannelViews(data.messageId);
+
+    // Broadcast updated view count to online followers
+    const followers = await ChatService.getChannelFollowers(data.channelId);
+    const redis = getRedis();
+    for (const followerId of followers) {
+      const followerData = await redis.hGet('online_users', followerId);
+      if (followerData) {
+        const f = JSON.parse(followerData);
+        this.io.to(f.socketId).emit('view_update', {
+          messageId: data.messageId,
+          views: views
+        });
+      }
+    }
+  }
+
+  async messageReaction(socket, data) {
+    if (!data || !data.messageId || !data.reaction) return;
+
+    const reactions = await ChatService.saveReaction(data.messageId, socket.userId, data.reaction);
+    if (!reactions) return;
+
+    const payload = {
+      messageId: data.messageId,
+      userId: socket.userId,
+      reaction: data.reaction,
+      reactions: reactions,
+      conversationId: data.conversationId
+    };
+
+    if (data.isChannel) {
+      const followers = await ChatService.getChannelFollowers(data.channelId);
+      const redis = getRedis();
+      for (const followerId of followers) {
+        const followerData = await redis.hGet('online_users', followerId);
+        if (followerData) {
+          const f = JSON.parse(followerData);
+          this.io.to(f.socketId).emit('message_reaction', payload);
+        }
+      }
+    } else if (data.receiverId) {
+      const redis = getRedis();
+      const receiverData = await redis.hGet('online_users', data.receiverId);
+      if (receiverData) {
+        const receiver = JSON.parse(receiverData);
+        this.io.to(receiver.socketId).emit('message_reaction', payload);
+      }
+      // Notify sender on other devices
+      socket.emit('message_reaction', payload);
+    }
   }
 
   async blockUser(socket, data) {
