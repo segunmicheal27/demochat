@@ -40,23 +40,46 @@ async function connectRedis() {
 }
 
 async function connectCouchbase() {
-  console.log(`Connecting to Couchbase: ${cbConnStr}`);
-  cluster = await couchbase.connect(cbConnStr, {
-    username: cbUser,
-    password: cbPass,
-    configProfile: "wanDevelopment",
-  });
-  bucket = cluster.bucket(cbBucket);
-  collection = bucket.defaultCollection();
-  console.log(`SUCCESS: Connected to Couchbase bucket: ${cbBucket}`);
-
-  // Create Primary Index if not exists (for development/demo)
   try {
-    await cluster.query(`CREATE PRIMARY INDEX ON \`${cbBucket}\``);
-    console.log("Primary Index verified/created.");
-  } catch (e) {}
+    console.log(`[Couchbase] Connecting to cluster: ${cbConnStr}`);
+    cluster = await couchbase.connect(cbConnStr, {
+      username: cbUser,
+      password: cbPass,
+      configProfile: "wanDevelopment",
+    });
 
-  return { cluster, bucket, collection };
+    // Check available buckets
+    try {
+      const bucketManager = cluster.buckets();
+      const allBuckets = await bucketManager.getAllBuckets();
+      console.log(`[Couchbase] Available buckets:`, allBuckets.map(b => b.name));
+    } catch (e) {
+      console.warn(`[Couchbase] Could not list buckets:`, e.message);
+    }
+
+    console.log(`[Couchbase] Opening bucket: "${cbBucket}"`);
+    bucket = cluster.bucket(cbBucket);
+
+    collection = bucket.defaultCollection();
+    console.log(`[Couchbase] SUCCESS: Connected to bucket: ${cbBucket}`);
+
+    // Create Primary Index if not exists
+    try {
+      await cluster.query(`CREATE PRIMARY INDEX ON \`${cbBucket}\``);
+      console.log("[Couchbase] Primary Index verified/created.");
+    } catch (e) {
+      if (e.message && e.message.includes("already exists")) {
+        console.log("[Couchbase] Primary Index already exists.");
+      } else {
+        console.warn("[Couchbase] Index Warning:", e.message);
+      }
+    }
+
+    return { cluster, bucket, collection };
+  } catch (e) {
+    console.error("[Couchbase] CONNECTION FATAL ERROR:", e);
+    throw e;
+  }
 }
 
 module.exports = {

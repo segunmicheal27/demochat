@@ -337,6 +337,19 @@ class ChatService {
       return 0;
     }
   }
+
+  // --- Upload Methods ---
+  async uploadImage(base64Data) {
+    try {
+      const result = await cloudinary.uploader.upload(base64Data, {
+        folder: 'swisspay/marketplace'
+      });
+      return result.secure_url;
+    } catch (e) {
+      console.error("Cloudinary Upload Error:", e);
+      throw e;
+    }
+  }
 }
 
 module.exports = new ChatService();
