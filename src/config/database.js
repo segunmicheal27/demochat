@@ -48,13 +48,30 @@ async function connectCouchbase() {
       configProfile: "wanDevelopment",
     });
 
-    // Check available buckets
+    const bucketManager = cluster.buckets();
+
+    // Check available buckets and attempt creation if missing
     try {
-      const bucketManager = cluster.buckets();
       const allBuckets = await bucketManager.getAllBuckets();
       console.log(`[Couchbase] Available buckets:`, allBuckets.map(b => b.name));
+
+      const exists = allBuckets.find(b => b.name === cbBucket);
+      if (!exists) {
+        console.log(`[Couchbase] Bucket "${cbBucket}" not found. Attempting to create...`);
+        await bucketManager.createBucket({
+          name: cbBucket,
+          ramQuotaMB: 128, // Minimum quota
+          bucketType: 'couchbase',
+          flushEnabled: true,
+          numReplicas: 0 // Capella free/lite usually allows 0 replicas
+        });
+        console.log(`[Couchbase] Bucket creation request sent. Waiting for initialization...`);
+        // Wait a bit for the bucket to initialize
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
     } catch (e) {
-      console.warn(`[Couchbase] Could not list buckets:`, e.message);
+      console.warn(`[Couchbase] Bucket Management Warning:`, e.message);
+      console.warn(`(This usually means the user "${cbUser}" does not have "Bucket Admin" or "Cluster Admin" permissions in Capella)`);
     }
 
     console.log(`[Couchbase] Opening bucket: "${cbBucket}"`);
