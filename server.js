@@ -6,7 +6,10 @@ require('dotenv').config();
 
 const { connectRedis, connectCouchbase, getRedis, getCluster } = require('./src/config/database');
 const { initializeFirebase } = require('./src/config/firebase');
+
 const ChatController = require('./src/controllers/ChatController');
+const ChannelController = require('./src/controllers/ChannelController');
+const CommerceController = require('./src/controllers/CommerceController');
 
 const port = process.env.PORT || 8080;
 const app = express();
@@ -32,8 +35,14 @@ const io = new Server(server, {
 });
 
 const chatController = new ChatController(io);
+const channelController = new ChannelController(io);
+const commerceController = new CommerceController(io);
 
-io.on('connection', (socket) => chatController.handleConnection(socket));
+io.on('connection', (socket) => {
+  chatController.handleEvents(socket);
+  channelController.handleEvents(socket);
+  commerceController.handleEvents(socket);
+});
 
 async function start() {
   try {

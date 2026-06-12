@@ -1,30 +1,22 @@
-const { getRedis, cbBucket } = require('../config/database');
+const BaseController = require('./BaseController');
+const { getRedis } = require('../config/database');
 const ChatService = require('../services/ChatService');
 
-class ChatController {
+class ChatController extends BaseController {
   constructor(io) {
-    this.io = io;
+    super(io);
   }
 
-  async handleConnection(socket) {
-    const transport = socket.conn.transport.name;
-    console.log(`\x1b[32m[${new Date().toLocaleTimeString()}] [+] NEW CONNECTION: ${socket.id} (Via: ${transport})\x1b[0m`);
-
+  handleEvents(socket) {
     socket.on('identify', (data) => this.identify(socket, data));
     socket.on('typing', (data) => this.typing(socket, data));
     socket.on('recording', (data) => this.recording(socket, data));
-    socket.on('create_channel', (data) => this.createChannel(socket, data));
-    socket.on('get_channels', (data) => this.getChannels(socket, data));
-    socket.on('get_my_channels', (data) => this.getMyChannels(socket, data));
-    socket.on('follow_channel', (data) => this.followChannel(socket, data));
-    socket.on('channel_message', (data) => this.channelMessage(socket, data));
-    socket.on('channel_view', (data) => this.channelView(socket, data));
-    socket.on('message_reaction', (data) => this.messageReaction(socket, data));
     socket.on('block_user', (data) => this.blockUser(socket, data));
     socket.on('read', (data) => this.read(socket, data));
     socket.on('message', (data) => this.message(socket, data));
     socket.on('edit_message', (data) => this.editMessage(socket, data));
     socket.on('delete_message', (data) => this.deleteMessage(socket, data));
+    socket.on('message_reaction', (data) => this.messageReaction(socket, data));
     socket.on('disconnect', (reason) => this.disconnect(socket, reason));
   }
 
@@ -44,10 +36,7 @@ class ChatController {
 
     console.log(`\x1b[36m[i] USER IDENTIFIED: ${user.firstName || 'Unknown'} ${user.lastName || ''} (ID: ${data.userId})\x1b[0m`);
 
-    // Save FCM Token permanently
-    if (data.fcmToken) {
-      await ChatService.saveFcmToken(data.userId, data.fcmToken);
-    }
+    if (data.fcmToken) await ChatService.saveFcmToken(data.userId, data.fcmToken);
 
     this.deliverPendingMessages(socket);
     this.broadcastOnlineUsers();
@@ -59,10 +48,7 @@ class ChatController {
     const receiverData = await redis.hGet('online_users', data.receiverId);
     if (receiverData) {
       const receiver = JSON.parse(receiverData);
-      this.io.to(receiver.socketId).emit('typing', {
-        senderId: socket.userId,
-        isTyping: data.isTyping
-      });
+      this.io.to(receiver.socketId).emit('typing', { senderId: socket.userId, isTyping: data.isTyping });
     }
   }
 
@@ -72,156 +58,7 @@ class ChatController {
     const receiverData = await redis.hGet('online_users', data.receiverId);
     if (receiverData) {
       const receiver = JSON.parse(receiverData);
-      this.io.to(receiver.socketId).emit('recording', {
-        senderId: socket.userId,
-        isRecording: data.isRecording
-      });
-    }
-  }
-
-  async followChannel(socket, data) {
-    if (!data || !data.channelId) return;
-
-    // Persist follow in Couchbase
-    await ChatService.followChannel(data.channelId, socket.userId);
-
-    // Notify owner if online
-    if (data.ownerId) {
-      const redis = getRedis();
-      const ownerData = await redis.hGet('online_users', data.ownerId);
-      if (ownerData) {
-        const owner = JSON.parse(ownerData);
-        this.io.to(owner.socketId).emit('channel_notification', {
-          type: 'follower',
-          channelId: data.channelId,
-          follower: data.follower,
-          timestamp: new Date().toISOString()
-        });
-      }
-    }
-  }
-
-  async createChannel(socket, data) {
-    if (!data || !data.id) return;
-    try {
-      const channel = await ChatService.createChannel(data);
-      socket.emit('channel_created', channel);
-      console.log(`[Channel] Created: ${data.name} by ${socket.userId}`);
-    } catch (e) {
-      socket.emit('error', { message: "Failed to create channel" });
-    }
-  }
-
-  async getChannels(socket, data) {
-    const channels = await ChatService.getAllChannels();
-    socket.emit('channels_list', channels);
-  }
-
-  async getMyChannels(socket, data) {
-    if (!socket.userId) return;
-    const channels = await ChatService.getMyFollowedChannels(socket.userId);
-    socket.emit('my_channels_list', channels);
-  }
-
-  async channelMessage(socket, data) {
-    if (!data || !data.channelId) return;
-
-    try {
-      // 1. Save to Couchbase + Cloudinary (Ownership check happens inside)
-      const messageDoc = await ChatService.saveChannelMessage(data);
-
-      // Ack to sender with final URL
-      socket.emit('status', {
-        messageId: data.id,
-        channelId: data.channelId,
-        status: 'sent',
-        text: messageDoc.text
-      });
-
-      // 2. Get all followers
-      const followers = await ChatService.getChannelFollowers(data.channelId);
-      console.log(`[Channel] Sending msg to ${followers.length} followers of ${data.channelId}`);
-
-      // 3. Emit to all online followers
-      const redis = getRedis();
-      for (const followerId of followers) {
-        if (followerId === socket.userId) continue;
-
-        const followerData = await redis.hGet('online_users', followerId);
-        if (followerData) {
-          const follower = JSON.parse(followerData);
-          this.io.to(follower.socketId).emit('message', {
-            ...messageDoc,
-            isChannelMessage: true
-          });
-        } else {
-          const token = await ChatService.getFcmToken(followerId);
-          if (token) {
-            await ChatService.sendPushNotification(token, {
-              ...messageDoc,
-              senderUser: { firstName: data.channelName || "Channel", lastName: "" }
-            });
-          }
-        }
-      }
-    } catch (e) {
-      console.error("Channel Message Error:", e.message);
-      socket.emit('error', { message: e.message });
-    }
-  }
-
-  async channelView(socket, data) {
-    if (!data || !data.messageId || !data.channelId) return;
-    const views = await ChatService.incrementChannelViews(data.messageId);
-
-    // Broadcast updated view count to online followers
-    const followers = await ChatService.getChannelFollowers(data.channelId);
-    const redis = getRedis();
-    for (const followerId of followers) {
-      const followerData = await redis.hGet('online_users', followerId);
-      if (followerData) {
-        const f = JSON.parse(followerData);
-        this.io.to(f.socketId).emit('view_update', {
-          messageId: data.messageId,
-          views: views
-        });
-      }
-    }
-  }
-
-  async messageReaction(socket, data) {
-    if (!data || !data.messageId || !data.reaction) return;
-
-    const reactions = await ChatService.saveReaction(data.messageId, socket.userId, data.reaction);
-    if (!reactions) return;
-
-    const payload = {
-      messageId: data.messageId,
-      userId: socket.userId,
-      reaction: data.reaction,
-      reactions: reactions,
-      conversationId: data.conversationId
-    };
-
-    if (data.isChannel) {
-      const followers = await ChatService.getChannelFollowers(data.channelId);
-      const redis = getRedis();
-      for (const followerId of followers) {
-        const followerData = await redis.hGet('online_users', followerId);
-        if (followerData) {
-          const f = JSON.parse(followerData);
-          this.io.to(f.socketId).emit('message_reaction', payload);
-        }
-      }
-    } else if (data.receiverId) {
-      const redis = getRedis();
-      const receiverData = await redis.hGet('online_users', data.receiverId);
-      if (receiverData) {
-        const receiver = JSON.parse(receiverData);
-        this.io.to(receiver.socketId).emit('message_reaction', payload);
-      }
-      // Notify sender on other devices
-      socket.emit('message_reaction', payload);
+      this.io.to(receiver.socketId).emit('recording', { senderId: socket.userId, isRecording: data.isRecording });
     }
   }
 
@@ -231,10 +68,7 @@ class ChatController {
     const receiverData = await redis.hGet('online_users', data.receiverId);
     if (receiverData) {
       const receiver = JSON.parse(receiverData);
-      this.io.to(receiver.socketId).emit('user_blocked', {
-        blockerId: socket.userId,
-        isBlocked: data.isBlocked
-      });
+      this.io.to(receiver.socketId).emit('user_blocked', { blockerId: socket.userId, isBlocked: data.isBlocked });
     }
   }
 
@@ -244,45 +78,29 @@ class ChatController {
     const senderData = await redis.hGet('online_users', data.senderId);
     if (senderData) {
       const sender = JSON.parse(senderData);
-      this.io.to(sender.socketId).emit('read', {
-        receiverId: socket.userId,
-        conversationId: data.conversationId
-      });
+      this.io.to(sender.socketId).emit('read', { receiverId: socket.userId, conversationId: data.conversationId });
     }
   }
 
   async message(socket, data) {
     if (!data || !data.receiverId) return;
-    console.log(`\x1b[90m[msg] ${data.senderId} -> ${data.receiverId}\x1b[0m`);
-
     const messageDoc = await ChatService.saveMessage(data);
-
     const redis = getRedis();
     const receiverData = await redis.hGet('online_users', data.receiverId);
     if (receiverData) {
       const receiver = JSON.parse(receiverData);
       this.io.to(receiver.socketId).emit('message', data);
-
       await ChatService.updateMessageStatus(data.id, 'delivered');
-
-      socket.emit('status', {
-        messageId: data.id,
-        conversationId: data.conversationId,
-        status: 'delivered'
-      });
+      socket.emit('status', { messageId: data.id, conversationId: data.conversationId, status: 'delivered' });
     } else {
-      // User is offline - Send Push Notification
       const token = await ChatService.getFcmToken(data.receiverId);
-      if (token) {
-        await ChatService.sendPushNotification(token, data);
-      }
+      if (token) await ChatService.sendPushNotification(token, data);
     }
   }
 
   async editMessage(socket, data) {
     if (!data || !data.receiverId || !data.messageId) return;
     await ChatService.editMessage(data.messageId, data.text);
-
     const redis = getRedis();
     const receiverData = await redis.hGet('online_users', data.receiverId);
     if (receiverData) {
@@ -294,20 +112,29 @@ class ChatController {
   async deleteMessage(socket, data) {
     if (!data || !data.receiverId || !data.messageId) return;
     await ChatService.deleteMessage(data.messageId, data.forEveryone);
-
     const redis = getRedis();
     const receiverData = await redis.hGet('online_users', data.receiverId);
     if (receiverData) {
       const receiver = JSON.parse(receiverData);
-      this.io.to(receiver.socketId).emit('delete_message', {
-        ...data,
-        senderId: socket.userId
-      });
+      this.io.to(receiver.socketId).emit('delete_message', { ...data, senderId: socket.userId });
+    }
+  }
+
+  async messageReaction(socket, data) {
+    if (!data || !data.messageId || !data.reaction) return;
+    const reactions = await ChatService.saveReaction(data.messageId, socket.userId, data.reaction);
+    if (!reactions) return;
+    const payload = { messageId: data.messageId, userId: socket.userId, reaction: data.reaction, reactions: reactions, conversationId: data.conversationId };
+
+    if (data.receiverId) {
+      const redis = getRedis();
+      const rData = await redis.hGet('online_users', data.receiverId);
+      if (rData) this.io.to(JSON.parse(rData).socketId).emit('message_reaction', payload);
+      socket.emit('message_reaction', payload);
     }
   }
 
   async disconnect(socket, reason) {
-    console.log(`\x1b[31m[-] DISCONNECTED: ${socket.id} (Reason: ${reason})\x1b[0m`);
     if (socket.userId) {
       const redis = getRedis();
       await redis.hDel('online_users', socket.userId);
@@ -318,26 +145,16 @@ class ChatController {
   async broadcastOnlineUsers() {
     const redis = getRedis();
     const allUsers = await redis.hGetAll('online_users');
-    const onlineData = Object.values(allUsers).map(userStr => {
-      const userData = JSON.parse(userStr);
-      return userData.user;
-    });
+    const onlineData = Object.values(allUsers).map(u => JSON.parse(u).user);
     this.io.emit('online_users', { users: onlineData });
   }
 
   async deliverPendingMessages(socket) {
-    const userId = socket.userId;
-    if (!userId) return;
-
-    const rows = await ChatService.getPendingMessages(userId);
-    if (rows.length > 0) {
-      console.log(`\x1b[33m[!] Delivering ${rows.length} pending messages to ${userId}\x1b[0m`);
-      for (const row of rows) {
-        const msg = row[cbBucket];
-        const docId = row.id;
-        socket.emit('message', msg);
-        await ChatService.markAsDelivered(docId, msg);
-      }
+    const rows = await ChatService.getPendingMessages(socket.userId);
+    for (const row of rows) {
+      const msg = row.id.startsWith('chat_message') ? row : row[Object.keys(row).find(k => k !== 'id')];
+      socket.emit('message', msg);
+      await ChatService.markAsDelivered(row.id, msg);
     }
   }
 }
