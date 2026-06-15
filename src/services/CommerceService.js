@@ -78,6 +78,16 @@ class CommerceService {
     } catch (e) {}
   }
 
+  async deleteAd(adId) {
+    const collection = getCollection();
+    try {
+      await collection.remove(`ad_${adId}`);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async incrementAdViews(adId) {
     const collection = getCollection();
     try {
@@ -101,7 +111,6 @@ class CommerceService {
       { id: "fashion", name: "Health & Beauty", icon: "face", color: "pink", image: "https://jiji.ng/assets/static/main/index/categories/beauty.png" },
       { id: "fashion_wear", name: "Fashion", icon: "checkroom", color: "red", image: "https://jiji.ng/assets/static/main/index/categories/fashion.png" },
       { id: "hobbies", name: "Hobbies, Art & Sport", icon: "sports_basketball", color: "teal", image: "https://jiji.ng/assets/static/main/index/categories/hobbies.png" },
-      { id: "jobs", name: "Seeking Work - CVs", icon: "work", color: "cyan", image: "https://jiji.ng/assets/static/main/index/categories/jobs.png" },
       { id: "services", name: "Services", icon: "build", color: "grey", image: "https://jiji.ng/assets/static/main/index/categories/services.png" }
     ];
   }

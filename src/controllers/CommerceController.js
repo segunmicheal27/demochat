@@ -13,6 +13,7 @@ class CommerceController extends BaseController {
     socket.on('get_my_ads', (data) => this.getMyAds(socket, data));
     socket.on('get_ad_categories', (data) => this.getAdCategories(socket, data));
     socket.on('update_ad_status', (data) => this.updateAdStatus(socket, data));
+    socket.on('delete_ad', (data) => this.deleteAd(socket, data));
     socket.on('ad_view', (data) => this.adView(socket, data));
   }
 
@@ -51,7 +52,15 @@ class CommerceController extends BaseController {
   async updateAdStatus(socket, data) {
     if (!data || !data.adId || !data.status) return;
     await CommerceService.updateAdStatus(data.adId, data.status);
-    socket.emit('ad_status_updated', data);
+    this.io.emit('ad_status_updated', data);
+  }
+
+  async deleteAd(socket, data) {
+    if (!data || !data.adId) return;
+    const success = await CommerceService.deleteAd(data.adId);
+    if (success) {
+      this.io.emit('ad_deleted', { adId: data.adId });
+    }
   }
 
   async adView(socket, data) {
