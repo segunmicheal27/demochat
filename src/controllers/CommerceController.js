@@ -29,7 +29,8 @@ class CommerceController extends BaseController {
   }
 
   async getAds(socket, data) {
-    const ads = await CommerceService.getAllAds();
+    const page = (data && data.page) ? data.page : 1;
+    const ads = await CommerceService.getAllAds(page);
     socket.emit('ads_list', ads);
   }
 

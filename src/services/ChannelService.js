@@ -122,10 +122,16 @@ class ChannelService {
   async deleteChannel(channelId, userId) {
     const collection = getCollection();
     try {
-      const result = await collection.get(`channel_${channelId}`);
-      const channel = result.content;
+      let channel;
+      try {
+        const result = await collection.get(`channel_${channelId}`);
+        channel = result.content;
+      } catch (e) {
+        // If channel document doesn't exist, we still want to try cleaning up orphans
+        console.warn(`Delete Channel Warning: Document channel_${channelId} not found. Cleaning up orphans.`);
+      }
 
-      if (channel.ownerId !== userId) {
+      if (channel && channel.ownerId !== userId) {
         throw new Error("Unauthorized: Only the owner can delete this channel.");
       }
 
@@ -138,8 +144,10 @@ class ChannelService {
       const deleteFollowersQuery = `DELETE FROM \`${cbBucket}\` WHERE type = 'channel_follower' AND channelId = $1`;
       await cluster.query(deleteFollowersQuery, { parameters: [channelId] });
 
-      // 3. Delete the channel itself
-      await collection.remove(`channel_${channelId}`);
+      // 3. Delete the channel itself (if it existed)
+      if (channel) {
+        await collection.remove(`channel_${channelId}`);
+      }
       return true;
     } catch (e) {
       console.error("Delete Channel Error:", e);

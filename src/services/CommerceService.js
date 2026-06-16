@@ -14,20 +14,22 @@ class CommerceService {
     return adDoc;
   }
 
-  async getAllAds() {
+  async getAllAds(page = 1, limit = 20) {
     const cluster = getCluster();
+    const offset = (page - 1) * limit;
     const query = `
       SELECT meta().id, *
       FROM \`${cbBucket}\`
       WHERE type = 'ad'
       AND status = 'active'
       ORDER BY createdAt DESC
-      LIMIT 200
+      LIMIT ${limit} OFFSET ${offset}
     `;
     try {
       const results = await cluster.query(query);
       return results.rows.map(row => ({ id: row.id, ...row[cbBucket] }));
     } catch (e) {
+      console.error("GetAllAds Error:", e);
       return [];
     }
   }
