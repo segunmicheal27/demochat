@@ -22,7 +22,7 @@ class CommerceService {
       WHERE type = 'ad'
       AND status = 'active'
       ORDER BY createdAt DESC
-      LIMIT 100
+      LIMIT 200
     `;
     try {
       const results = await cluster.query(query);
