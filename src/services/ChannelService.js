@@ -146,6 +146,32 @@ class ChannelService {
       throw e;
     }
   }
+
+  async updateChannel(channelId, userId, updateData) {
+    const collection = getCollection();
+    try {
+      const result = await collection.get(`channel_${channelId}`);
+      const channel = result.content;
+
+      if (channel.ownerId !== userId) {
+        throw new Error("Unauthorized: Only the owner can edit this channel.");
+      }
+
+      const updatedChannel = {
+        ...channel,
+        name: updateData.name || channel.name,
+        description: updateData.description !== undefined ? updateData.description : channel.description,
+        profileUrl: updateData.profileUrl !== undefined ? updateData.profileUrl : channel.profileUrl,
+        updatedAt: new Date().toISOString()
+      };
+
+      await collection.replace(`channel_${channelId}`, updatedChannel);
+      return updatedChannel;
+    } catch (e) {
+      console.error("Update Channel Error:", e);
+      throw e;
+    }
+  }
 }
 
 module.exports = new ChannelService();

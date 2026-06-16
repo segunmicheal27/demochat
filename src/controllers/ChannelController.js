@@ -17,6 +17,7 @@ class ChannelController extends BaseController {
     socket.on('channel_view', (data) => this.channelView(socket, data));
     socket.on('channel_reaction', (data) => this.channelReaction(socket, data));
     socket.on('delete_channel', (data) => this.deleteChannel(socket, data));
+    socket.on('update_channel', (data) => this.updateChannel(socket, data));
   }
 
   async createChannel(socket, data) {
@@ -122,6 +123,16 @@ class ChannelController extends BaseController {
       if (success) {
         this.io.emit('channel_deleted', { channelId: data.channelId });
       }
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  }
+
+  async updateChannel(socket, data) {
+    if (!data || !data.channelId || !socket.userId) return;
+    try {
+      const updatedChannel = await ChannelService.updateChannel(data.channelId, socket.userId, data);
+      this.io.emit('channel_updated', updatedChannel);
     } catch (e) {
       socket.emit('error', { message: e.message });
     }
