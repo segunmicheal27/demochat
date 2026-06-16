@@ -18,6 +18,9 @@ class ChannelController extends BaseController {
     socket.on('channel_reaction', (data) => this.channelReaction(socket, data));
     socket.on('delete_channel', (data) => this.deleteChannel(socket, data));
     socket.on('update_channel', (data) => this.updateChannel(socket, data));
+    socket.on('get_channel_messages', (data) => this.getChannelMessages(socket, data));
+    socket.on('edit_channel_message', (data) => this.editChannelMessage(socket, data));
+    socket.on('delete_channel_message', (data) => this.deleteChannelMessage(socket, data));
   }
 
   async createChannel(socket, data) {
@@ -133,6 +136,32 @@ class ChannelController extends BaseController {
     try {
       const updatedChannel = await ChannelService.updateChannel(data.channelId, socket.userId, data);
       this.io.emit('channel_updated', updatedChannel);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  }
+
+  async getChannelMessages(socket, data) {
+    if (!data || !data.channelId) return;
+    const messages = await ChannelService.getChannelMessages(data.channelId, data.page || 1);
+    socket.emit('channel_messages_list', { channelId: data.channelId, messages });
+  }
+
+  async editChannelMessage(socket, data) {
+    if (!data || !data.messageId || !data.text || !socket.userId) return;
+    try {
+      const updatedMsg = await ChannelService.editChannelMessage(data.messageId, socket.userId, data.text);
+      this.io.emit('channel_message_edited', updatedMsg);
+    } catch (e) {
+      socket.emit('error', { message: e.message });
+    }
+  }
+
+  async deleteChannelMessage(socket, data) {
+    if (!data || !data.messageId || !socket.userId) return;
+    try {
+      await ChannelService.deleteChannelMessage(data.messageId, socket.userId);
+      this.io.emit('channel_message_deleted', { messageId: data.messageId, channelId: data.channelId });
     } catch (e) {
       socket.emit('error', { message: e.message });
     }

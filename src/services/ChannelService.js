@@ -106,6 +106,64 @@ class ChannelService {
     return messageDoc;
   }
 
+  async getChannelMessages(channelId, page = 1, limit = 50) {
+    const cluster = getCluster();
+    const offset = (page - 1) * limit;
+    const query = `
+      SELECT meta().id, *
+      FROM \`${cbBucket}\`
+      WHERE type = 'channel_message'
+      AND channelId = $1
+      ORDER BY createdAt DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+    try {
+      const results = await cluster.query(query, { parameters: [channelId] });
+      return results.rows.map(row => ({ id: row.id, ...row[cbBucket] }));
+    } catch (e) {
+      console.error("GetChannelMessages Error:", e);
+      return [];
+    }
+  }
+
+  async editChannelMessage(messageId, userId, newText) {
+    const collection = getCollection();
+    try {
+      const result = await collection.get(messageId);
+      const msg = result.content;
+
+      if (msg.senderId !== userId) {
+        throw new Error("Unauthorized: Only the sender can edit this message.");
+      }
+
+      msg.text = newText;
+      msg.updatedAt = new Date().toISOString();
+      await collection.replace(messageId, msg);
+      return msg;
+    } catch (e) {
+      console.error("EditChannelMessage Error:", e);
+      throw e;
+    }
+  }
+
+  async deleteChannelMessage(messageId, userId) {
+    const collection = getCollection();
+    try {
+      const result = await collection.get(messageId);
+      const msg = result.content;
+
+      if (msg.senderId !== userId) {
+        throw new Error("Unauthorized: Only the sender can delete this message.");
+      }
+
+      await collection.remove(messageId);
+      return true;
+    } catch (e) {
+      console.error("DeleteChannelMessage Error:", e);
+      throw e;
+    }
+  }
+
   async incrementChannelViews(messageId) {
     const collection = getCollection();
     try {
