@@ -118,6 +118,34 @@ class ChannelService {
       return 0;
     }
   }
+
+  async deleteChannel(channelId, userId) {
+    const collection = getCollection();
+    try {
+      const result = await collection.get(`channel_${channelId}`);
+      const channel = result.content;
+
+      if (channel.ownerId !== userId) {
+        throw new Error("Unauthorized: Only the owner can delete this channel.");
+      }
+
+      // 1. Delete all channel messages
+      const cluster = getCluster();
+      const deleteMessagesQuery = `DELETE FROM \`${cbBucket}\` WHERE type = 'channel_message' AND channelId = $1`;
+      await cluster.query(deleteMessagesQuery, { parameters: [channelId] });
+
+      // 2. Delete all follower links
+      const deleteFollowersQuery = `DELETE FROM \`${cbBucket}\` WHERE type = 'channel_follower' AND channelId = $1`;
+      await cluster.query(deleteFollowersQuery, { parameters: [channelId] });
+
+      // 3. Delete the channel itself
+      await collection.remove(`channel_${channelId}`);
+      return true;
+    } catch (e) {
+      console.error("Delete Channel Error:", e);
+      throw e;
+    }
+  }
 }
 
 module.exports = new ChannelService();
